@@ -1,6 +1,6 @@
 // Cache hors connexion : on prend la version en ligne si possible,
 // sinon la dernière version enregistrée sur le téléphone.
-var CACHE = 'carnet-de-bord-5';
+var CACHE = 'carnet-de-bord-8';
 var FILES = ['./', 'index.html', 'manifest.webmanifest', 'apple-touch-icon.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function(e){
   e.waitUntil(caches.open(CACHE).then(function(c){ return c.addAll(FILES); }).then(function(){ return self.skipWaiting(); }));

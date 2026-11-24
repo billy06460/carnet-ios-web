@@ -3231,116 +3231,51 @@
     catch(e){ return false; }
   }
 
-  // Envoi via l'app Raccourcis d'Apple : la page copie la fiche (adresses, objet,
-  // texte, PDF en base64) puis lance le raccourci « Carnet mail », qui crée le mail
-  // entièrement rempli avec le PDF en pièce jointe.
+  // iPhone : la page copie la fiche (même format que l'appli PREJ Missions :
+  // {"v":1,"docs":[{doc,to,bcc,subject,name,pdf}]}) puis lance le raccourci
+  // « Carnet mail », qui envoie le mail avec le PDF joint.
   var SHORTCUT_NAME = 'Carnet mail';
-  function shortcutPayload(d){
-    return JSON.stringify({ destinataires: d.emails, objet: d.subject, texte: d.text, nom: d.filename, pdf: d.b64 });
-  }
-  function runMailShortcut(d, done){
-    var url = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME);
-    var payload = shortcutPayload(d);
-    var go = function(){ window.location.href = url; if (done) done(); };
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(payload).then(go, function(){ copyTextLegacy(payload); go(); });
-        return;
-      }
-    } catch(e){}
-    copyTextLegacy(payload); go();
-  }
-
-  function shortcutGuideHtml(){
-    return '<div class="sc-guide">' +
-      '<p>À faire <b>une seule fois</b> sur chaque iPhone, dans l\'app <b>Raccourcis</b> :</p>' +
-      '<ol>' +
-        '<li>Touchez <b>+</b> et nommez le raccourci exactement <b>' + SHORTCUT_NAME + '</b>.</li>' +
-        '<li><b>Obtenir le presse-papiers</b>.</li>' +
-        '<li><b>Obtenir le dictionnaire</b> (à partir du <i>Presse-papiers</i>).</li>' +
-        '<li><b>Définir la variable</b> : nom <b>Fiche</b>.</li>' +
-        '<li><b>Obtenir la valeur du dictionnaire</b> : clé <b>destinataires</b>, dans <i>Fiche</i>.</li>' +
-        '<li><b>Définir la variable</b> : nom <b>Destinataires</b>.</li>' +
-        '<li><b>Obtenir la valeur du dictionnaire</b> : clé <b>objet</b>, dans <i>Fiche</i>.</li>' +
-        '<li><b>Définir la variable</b> : nom <b>Objet</b>.</li>' +
-        '<li><b>Obtenir la valeur du dictionnaire</b> : clé <b>nom</b>, dans <i>Fiche</i>.</li>' +
-        '<li><b>Définir la variable</b> : nom <b>NomFichier</b>.</li>' +
-        '<li><b>Obtenir la valeur du dictionnaire</b> : clé <b>pdf</b>, dans <i>Fiche</i>.</li>' +
-        '<li><b>Encoder en base64</b> : touchez <i>Encoder</i> › <b>Décoder</b>.</li>' +
-        '<li><b>Définir le nom</b> du <i>Résultat Base64</i> sur la variable <i>NomFichier</i>.</li>' +
-        '<li><b>Envoyer un e-mail</b> : Message = <i>Fichier renommé</i>, Destinataires = variable <i>Destinataires</i>, Objet = variable <i>Objet</i>.</li>' +
-      '</ol>' +
-      '<p class="sc-tip">Laissez <b>Afficher l\'éditeur</b> activé pour relire le mail avant l\'envoi, ou désactivez-le pour qu\'il parte directement.</p>' +
-    '</div>';
-  }
-
-  function openShortcutGuide(back){
-    var root = document.getElementById('modalRoot');
-    root.innerHTML =
-      '<div class="modal-backdrop" id="scBackdrop">' +
-        '<div class="modal mail-sheet">' +
-          '<h3>Créer le raccourci « ' + SHORTCUT_NAME + ' »</h3>' +
-          shortcutGuideHtml() +
-          '<div class="modal-actions">' +
-            '<button class="btn" id="scBack">Retour</button>' +
-            '<button class="btn btn-primary" id="scOpen">Ouvrir l\'app Raccourcis</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    document.getElementById('scBack').addEventListener('click', function(){ if (back) back(); else root.innerHTML = ""; });
-    document.getElementById('scOpen').addEventListener('click', function(){ window.location.href = 'shortcuts://'; });
-  }
 
   function openMailSheet(m, d){
     var root = document.getElementById('modalRoot');
-    var share = canShareFile(d.file);
-    var addrList = d.emails.join(', ');
+    // Le PDF garde le numéro de mission comme nom (ex. 987650.pdf)
+    var niceName = d.filename;
+    var payload = JSON.stringify({ v: 1, docs: [{
+      doc: 'fiche', to: d.emails, bcc: [], subject: d.subject, name: niceName, pdf: d.b64
+    }] });
     var sizeKb = Math.max(1, Math.round(d.blob.size / 1024));
-    function markSent(info){
-      var at = new Date().toISOString();
-      m.lastSentAt = at; saveMissions();
-      addSendLog(d.emails.map(function(to){ return { at: at, plate: m.plate || '', to: to, ok: true, info: info }; }));
-    }
     function close(){ root.innerHTML = ""; }
-    function render(){
-      root.innerHTML =
-        '<div class="modal-backdrop" id="mailBackdrop">' +
-          '<div class="modal mail-sheet">' +
-            '<h3>Envoyer la fiche par mail</h3>' +
-            '<div class="mail-step"><span class="mail-ok">✓</span><div><b>PDF prêt</b><span>' + esc(d.filename) + ' · ' + sizeKb + ' Ko</span></div></div>' +
-            '<div class="mail-step"><span class="mail-ok">✓</span><div><b>Destinataires</b><span>' + esc(addrList) + '</span></div></div>' +
-            '<div class="mail-step"><span class="mail-num">→</span><div><b>Mail rempli automatiquement</b><span>Destinataires, objet et PDF en pièce jointe, via le raccourci « ' + SHORTCUT_NAME + ' ».</span></div></div>' +
-            '<div class="modal-actions">' +
-              '<button class="btn" id="mailCancel">Annuler</button>' +
-              (share ? '<button class="btn" id="mailShare">Autre méthode : partager (adresses à coller)</button>' : '') +
-              '<button class="btn" id="mailGuide">Première fois ? Créer le raccourci</button>' +
-              '<button class="btn btn-primary" id="mailGo">Envoyer par mail</button>' +
-            '</div>' +
+    root.innerHTML =
+      '<div class="modal-backdrop" id="mailBackdrop">' +
+        '<div class="modal mail-sheet">' +
+          '<h3>Envoyer la fiche par mail</h3>' +
+          '<div class="mail-step"><span class="mail-ok">✓</span><div><b>PDF prêt</b><span>' + esc(niceName) + ' · ' + sizeKb + ' Ko</span></div></div>' +
+          '<div class="mail-step"><span class="mail-ok">✓</span><div><b>Destinataires</b><span>' + esc(d.emails.join(', ')) + '</span></div></div>' +
+          '<div class="modal-actions">' +
+            '<button class="btn" id="mailCancel">Annuler</button>' +
+            '<button class="btn btn-primary" id="mailGo">Envoyer par mail</button>' +
           '</div>' +
-        '</div>';
-      document.getElementById('mailCancel').addEventListener('click', close);
-      document.getElementById('mailBackdrop').addEventListener('click', function(e){ if (e.target.id === 'mailBackdrop') close(); });
-      document.getElementById('mailGuide').addEventListener('click', function(){ openShortcutGuide(render); });
-      document.getElementById('mailGo').addEventListener('click', function(){
-        runMailShortcut(d, function(){
-          markSent('Transmis au raccourci « ' + SHORTCUT_NAME + ' »');
-          close();
-          showToast('Ouverture du mail…', 4000);
-        });
-      });
-      var sb = document.getElementById('mailShare');
-      if (sb) sb.addEventListener('click', function(){
-        copyText(addrList);
-        navigator.share({ files: [d.file], title: d.subject, text: d.text }).then(function(){
-          close(); markSent('Mail préparé (partage)');
-          showToast('Fiche transmise à Mail.', 4000);
-        }).catch(function(err){
-          if (err && err.name === 'AbortError') return;
-          window.alert("Ouverture de Mail impossible :\n" + errDetail(err));
-        });
-      });
-    }
-    render();
+        '</div>' +
+      '</div>';
+    document.getElementById('mailCancel').addEventListener('click', close);
+    document.getElementById('mailBackdrop').addEventListener('click', function(e){ if (e.target.id === 'mailBackdrop') close(); });
+    document.getElementById('mailGo').addEventListener('click', function(){
+      var url = 'shortcuts://run-shortcut?name=' + encodeURIComponent(SHORTCUT_NAME);
+      function go(){
+        var at = new Date().toISOString();
+        m.lastSentAt = at; saveMissions();
+        addSendLog(d.emails.map(function(to){ return { at: at, plate: m.plate || '', to: to, ok: true, info: 'Transmis au raccourci « ' + SHORTCUT_NAME + ' »' }; }));
+        close();
+        window.location.href = url;
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(payload).then(go, function(){ copyTextLegacy(payload); go(); });
+          return;
+        }
+      } catch(e){}
+      copyTextLegacy(payload); go();
+    });
   }
 
   // Secours : ouvre Messages (une adresse à la fois, sinon le PDF n'est pas joint)
